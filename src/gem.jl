@@ -112,6 +112,31 @@ end
 
 
 
-function GemSolve!(mod::GemModel, hal::GemHamiltonian)
-    # defined by user
+function gemsolve!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, xxx::T, www::T, kws...) where {{T <: Vector{Float64}}::nothing}
+    nc, nb = gh.N, gb.nmax
+    gbb = [gembasisn(gb, i) for i in 1:nb]
+    for cli in 1:nc
+        tmp_l = gh.T[cli].l
+        for clj in 1:nc
+            for i in 1:nb
+                νn_i = gbb[i]
+                for j in 1:nb
+                    νn_j = gbb[j]
+                    gm.Vmat[i+(cli-1)*nb, j+(clj-1)*nb] = VMatrix_gem(r -> gh.V(cli, clj; $(kws...)), νn_i, νn_j, tmp_l)
+                end
+            end
+        end
+    end
+    gm.evals, gm.evecs = eigen(gm.Tmat + gm.ΔEmat + gm.Vmat, gm.Nmat)
+    nothing
+end
+
+function gemisbounded(gm::GemModel)::Bool
+    # check for negative real eigen value
+    return
+end
+
+function gemplot!(plt, gm::GemModel)::nothing
+    plot(plt; $(kws...))
+    nothing
 end
