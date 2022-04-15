@@ -125,7 +125,7 @@ end
 
 
 
-function gemsolve!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, xxx::T, www::T; kws...)::nothing where {T<:Vector{Float64}}
+function gemsolve!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, xxx::T, www::T; kws...) where {T<:Vector{Float64}}
     nc, nb = gh.N, gb.nmax
     gbb = gembasisl(gb)
     for cli in 1:nc
