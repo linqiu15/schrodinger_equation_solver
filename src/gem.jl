@@ -1,3 +1,10 @@
+module Gem
+export GemBasis, GemChannel, GemHamiltonian, GemModel
+export gemisbounded, gemsolve!, gemplot
+
+using Plots: plot
+using LinearAlgebra: eigen
+
 include("others/quadgauss.jl")
 
 """
@@ -19,7 +26,7 @@ function double_factorial(n)
 end
 
 function N_gem(νn, l)
-    return sqrt(2^(l + 2) * (2νn)^(l + 3 / 2) / (sqrt(π) * double_factorial(2l + 1)))
+    return sqrt(2^(l + 2) * (2 * νn)^(l + 3 / 2) / (sqrt(π) * double_factorial(2 * l + 1)))
 end
 
 function φ_gem(r, νn, l)
@@ -27,15 +34,15 @@ function φ_gem(r, νn, l)
 end
 
 function NMatrix_gem(νn1, νn2, l)
-    return (2sqrt(νn1 * νn2) / (νn1 + νn2))^(l + 3 / 2)
+    return (2 * sqrt(νn1 * νn2) / (νn1 + νn2))^(l + 3 / 2)
 end
 
 function TMatrix_gem(νn1, νn2, l, μ, hbar)
-    return hbar^2 / μ * (2l + 3) * νn1 * νn2 / (νn1 + νn2) * (2 * sqrt(νn1 * νn2) / (νn1 + νn2))^(l + 3 / 2)
+    return hbar^2 / μ * (2 * l + 3) * νn1 * νn2 / (νn1 + νn2) * (2 * sqrt(νn1 * νn2) / (νn1 + νn2))^(l + 3 / 2)
 end
 
 function VMatrix_gem(V, νn1, νn2, l, xxx::T, www::T) where {T<:Vector{Float64}}
-    return N_gem(νn1, l) * N_gem(νn2, l) * integauss1d(r -> (r^(2l) * exp(-(νn1 + νn2) * r^2) * V(r) * r^2), xxx, www)
+    return N_gem(νn1, l) * N_gem(νn2, l) * integauss1d(r -> (r^(2 * l) * exp(-(νn1 + νn2) * r^2) * V(r) * r^2), xxx, www)
 end
 
 #-----------------------------functions related to gaussian basises-----------------------------------
@@ -50,6 +57,11 @@ function gembasisn(gb::GemBasis, n)::Float64
     return 1 / r1^2 * (r1 / rnmax)^((2n - 2) / (nmax - 1))
 end
 
+function gembasisl(gb::GemBasis)::Vector{Float64}
+    nmax, r1, rnmax = gb.nmax, gb.r1, gb.rnmax
+    return map(n -> 1 / r1^2 * (r1 / rnmax)^((2n - 2) / (nmax - 1)), 1:nmax)
+end
+
 #---------------------------functions related to Hamiltonian stuff-------------------------------------
 mutable struct GemChannel
     id::Int8
@@ -62,6 +74,7 @@ mutable struct GemHamiltonian
     N::Int8
     T::Vector{GemChannel}
     V
+
     function GemHamiltonian(vμ, vΔE, vl, Vf)
         if !(length(vμ) == length(vΔE) && length(vμ) == length(vl))
             error("The input vectors should be in the same length!")
@@ -86,7 +99,7 @@ mutable struct GemModel
 
     function GemModel(gh::GemHamiltonian, gb::GemBasis; hbar=1)
         nc, nb = gh.N, gb.nmax
-        gbb = [gembasisn(gb, i) for i in 1:nb]
+        gbb = gembasisl(gb)
 
         tmp_Tmat = zeros(Float64, nc * nb, nc * nb)
         tmp_ΔEmat = zeros(Float64, nc * nb, nc * nb)
@@ -95,13 +108,13 @@ mutable struct GemModel
         # assign static Matrix: T,ΔE,N
         for cl in 1:nc
             tmp_μ, tmp_ΔE, tmp_l = gh.T[cl].μ, gh.T[cl].ΔE, gh.T[cl].l
-            for i in 1:nmax
+            for i in 1:nb
                 νn_i = gbb[i]
-                for j in 1:nmax
+                for j in 1:nb
                     νn_j = gbb[j]
-                    tmp_ΔEmat[i+(cl-1)*nmax, j+(cl-1)*nmax] = tmp_ΔE * NMatrix_gem(νn_i, νn_j, tmp_l)
-                    tmp_Nmat[i+(cl-1)*nmax, j+(cl-1)*nmax] = NMatrix_gem(νn_i, νn_j, tmp_l)
-                    tmp_Tmat[i+(cl-1)*nmax, j+(cl-1)*nmax] = TMatrix_gem(νn_i, νn_j, tmp_l, tmp_μ, hbar)
+                    tmp_ΔEmat[i+(cl-1)*nb, j+(cl-1)*nb] = tmp_ΔE * NMatrix_gem(νn_i, νn_j, tmp_l)
+                    tmp_Nmat[i+(cl-1)*nb, j+(cl-1)*nb] = NMatrix_gem(νn_i, νn_j, tmp_l)
+                    tmp_Tmat[i+(cl-1)*nb, j+(cl-1)*nb] = TMatrix_gem(νn_i, νn_j, tmp_l, tmp_μ, hbar)
                 end
             end
         end
@@ -112,9 +125,9 @@ end
 
 
 
-function gemsolve!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, xxx::T, www::T, kws...) where {{T <: Vector{Float64}}::nothing}
+function gemsolve!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, xxx::T, www::T; kws...)::nothing where {T<:Vector{Float64}}
     nc, nb = gh.N, gb.nmax
-    gbb = [gembasisn(gb, i) for i in 1:nb]
+    gbb = gembasisl(gb)
     for cli in 1:nc
         tmp_l = gh.T[cli].l
         for clj in 1:nc
@@ -122,7 +135,7 @@ function gemsolve!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, xxx::T, www::
                 νn_i = gbb[i]
                 for j in 1:nb
                     νn_j = gbb[j]
-                    gm.Vmat[i+(cli-1)*nb, j+(clj-1)*nb] = VMatrix_gem(r -> gh.V(cli, clj; $(kws...)), νn_i, νn_j, tmp_l)
+                    gm.Vmat[i+(cli-1)*nb, j+(clj-1)*nb] = VMatrix_gem(r -> gh.V(r, cli, clj; kws...), νn_i, νn_j, tmp_l, xxx, www)
                 end
             end
         end
@@ -132,11 +145,32 @@ function gemsolve!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, xxx::T, www::
 end
 
 function gemisbounded(gm::GemModel)::Bool
-    # check for negative real eigen value
-    return
+    i, res = 1, false
+    while i <= length(gm.evals)
+        if isreal(gm.evals[i]) && real(gm.evecs[i]) < 0
+            return true
+        elseif real(gm.evecs[i]) >= 0
+            break
+        end
+        i += 1
+    end
+    return res
 end
 
-function gemplot!(plt, gm::GemModel)::nothing
-    plot(plt; $(kws...))
-    nothing
+function gemplot(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, cl, index, rmin, rmax; kwargs...)
+    nc, nb = gh.N, gb.nmax
+    gbb = gembasisl(gb)
+
+    function wf(r; cl=1, index=1)
+        tmp = 0.0
+        for i in eachindex(gbb)
+            tmp += gm.evecs[i+nb*(cl-1), index] * φ_gem(r, gbb[i], gh.T[cl].l)
+        end
+        return tmp
+    end
+    plot(r -> wf(r; cl=cl, index=index), rmin, rmax; kwargs...)
+
+end
+
+
 end
