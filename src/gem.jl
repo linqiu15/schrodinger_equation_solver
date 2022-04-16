@@ -1,9 +1,18 @@
 module Gem
-export GemBasis, GemChannel, GemHamiltonian, GemModel
-export gemisbounded, gemsolve!, gemplot
 
-using Plots: plot
+export GemBasis, GemHamiltonian, GemModel
+export gemisbounded, gemsolve!, gemplot, gemplot!, gemplotr, gemplotr!, gemgetwf
+
+using Plots: plot, plot!
 using LinearAlgebra: eigen
+using QuadGK: gauss
+
+global gem_xxx, gem_www = gauss(40, 0, 1)
+function makegauss(N::Int)
+    global gem_xxx, gem_www = gauss(N, 0, 1)
+    nothing
+end
+
 
 include("others/quadgauss.jl")
 
@@ -125,7 +134,7 @@ end
 
 
 
-function gemsolve!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, xxx::T, www::T; kws...) where {T<:Vector{Float64}}
+function gemsolve!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, xxx::T=gem_xxx, www::T=gem_www; kws...) where {T<:Vector{Float64}}
     nc, nb = gh.N, gb.nmax
     gbb = gembasisl(gb)
     for cli in 1:nc
@@ -147,9 +156,9 @@ end
 function gemisbounded(gm::GemModel)::Bool
     i, res = 1, false
     while i <= length(gm.evals)
-        if isreal(gm.evals[i]) && real(gm.evecs[i]) < 0
+        if isreal(gm.evals[i]) && real(gm.evals[i]) < 0
             return true
-        elseif real(gm.evecs[i]) >= 0
+        elseif real(gm.evals[i]) >= 0
             break
         end
         i += 1
@@ -157,7 +166,7 @@ function gemisbounded(gm::GemModel)::Bool
     return res
 end
 
-function gemplot(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, cl, index, rmin, rmax; kwargs...)
+function gemplot(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, cl, index, rmin, rmax, xxx=gem_xxx, www=gem_www; kwargs...)
     nc, nb = gh.N, gb.nmax
     gbb = gembasisl(gb)
 
@@ -168,8 +177,101 @@ function gemplot(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, cl, index, rmin
         end
         return tmp
     end
-    plot(r -> wf(r; cl=cl, index=index), rmin, rmax; kwargs...)
 
+    NormalConstant = 0.0
+    for i in 1:nc
+        NormalConstant += integauss1d(r -> real(r * wf(r; cl=i, index=index))^2, xxx, www)
+    end
+
+    sym = sign(real(wf((rmin + rmax) / 2; cl=1, index=index)))
+
+    plot(r -> real(sym * wf(r; cl=cl, index=index) / sqrt(4 * π * NormalConstant)), rmin, rmax; kwargs...)
+end
+
+function gemplot!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, cl, index, rmin, rmax, xxx=gem_xxx, www=gem_www; kwargs...)
+    nc, nb = gh.N, gb.nmax
+    gbb = gembasisl(gb)
+
+    function wf(r; cl=1, index=1)
+        tmp = 0.0
+        for i in eachindex(gbb)
+            tmp += gm.evecs[i+nb*(cl-1), index] * φ_gem(r, gbb[i], gh.T[cl].l)
+        end
+        return tmp
+    end
+
+    NormalConstant = 0.0
+    for i in 1:nc
+        NormalConstant += integauss1d(r -> real(r * wf(r; cl=i, index=index))^2, xxx, www)
+    end
+
+    sym = sign(real(wf((rmin + rmax) / 2; cl=1, index=index)))
+
+    plot!(r -> real(sym * wf(r; cl=cl, index=index) / sqrt(4 * π * NormalConstant)), rmin, rmax; kwargs...)
+end
+
+function gemplotr(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, cl, index, rmin, rmax, xxx=gem_xxx, www=gem_www; kwargs...)
+    nc, nb = gh.N, gb.nmax
+    gbb = gembasisl(gb)
+
+    function wf(r; cl=1, index=1)
+        tmp = 0.0
+        for i in eachindex(gbb)
+            tmp += gm.evecs[i+nb*(cl-1), index] * φ_gem(r, gbb[i], gh.T[cl].l)
+        end
+        return tmp
+    end
+
+    NormalConstant = 0.0
+    for i in 1:nc
+        NormalConstant += integauss1d(r -> real(r * wf(r; cl=i, index=index))^2, xxx, www)
+    end
+
+    sym = sign(real(wf((rmin + rmax) / 2; cl=1, index=index)))
+
+    plot(r -> real(sym * r * wf(r; cl=cl, index=index) / sqrt(4 * π * NormalConstant)), rmin, rmax; kwargs...)
+end
+
+function gemplotr!(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, cl, index, rmin, rmax, xxx=gem_xxx, www=gem_www; kwargs...)
+    nc, nb = gh.N, gb.nmax
+    gbb = gembasisl(gb)
+
+    function wf(r; cl=1, index=1)
+        tmp = 0.0
+        for i in eachindex(gbb)
+            tmp += gm.evecs[i+nb*(cl-1), index] * φ_gem(r, gbb[i], gh.T[cl].l)
+        end
+        return tmp
+    end
+
+    NormalConstant = 0.0
+    for i in 1:nc
+        NormalConstant += integauss1d(r -> real(r * wf(r; cl=i, index=index))^2, xxx, www)
+    end
+
+    sym = sign(real(wf((rmin + rmax) / 2; cl=1, index=index)))
+
+    plot!(r -> real(sym * r * wf(r; cl=cl, index=index) / sqrt(4 * π * NormalConstant)), rmin, rmax; kwargs...)
+end
+
+function gemgetwf(gm::GemModel, gh::GemHamiltonian, gb::GemBasis, index)
+    nc, nb = gh.N, gb.nmax
+    gbb = gembasisl(gb)
+
+    function wf(r; cl=1, index=1)
+        tmp = 0.0
+        for i in eachindex(gbb)
+            tmp += gm.evecs[i+nb*(cl-1), index] * φ_gem(r, gbb[i], gh.T[cl].l)
+        end
+        return tmp
+    end
+
+
+    res = Array{Any}(undef, nc)
+    for i in 1:nc
+        res[i] = (r -> wf(r; cl=i, index=index))
+    end
+    return res
 end
 
 
